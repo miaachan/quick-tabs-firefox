@@ -214,21 +214,16 @@ function updateBadgeText() {
 
 /**
  * Avoid saving tabs order to local storage with a debounce of 60 seconds.
- * Reduced to 1 second for Firefox compatibility (and better persistence in general)
- * to prevent data loss when the background script suspends.
+ * We use session storage for immediate persistence, so we can relax the disk write frequency.
  */
-var debouncedSaveTabsOrder = Utils.debounce(saveTabsOrder, 1_000);
+var debouncedSaveTabsOrder = Utils.debounce(saveTabsOrder, 60_000);
 
 /**
  * move the tab with tabId to the top of the global tabs array
  *
  * @param tabId
  */
-/**
- * move the tab with tabId to the top of the global tabs array
- *
- * @param tabId
- */
+
 function updateTabOrder(tabId) {
   // Don't update when returning to same tab: e.g. when closing extension popups, developer tools, ...
   if (tabs.length > 0 && tabId === tabs[0].id) {
@@ -277,8 +272,11 @@ function executeTabOrderUpdate(tabId) {
   // reset the badge color
   chrome.action.setBadgeBackgroundColor(debug ? debugBadgeColor : badgeColor);
 
-  // Save immediately since we are already delayed by the alarm
-  saveTabsOrder();
+  // Save immediately to session storage (Fast, persists across suspend)
+  saveTabsOrderToSession();
+
+  // Schedule save to disk (Slow, persists across restart)
+  debouncedSaveTabsOrder();
 }
 
 // Listen for alarms
@@ -300,11 +298,33 @@ function saveTabsOrder() {
   Config.set(TABS_ORDER, tabUrls);
 }
 
+function saveTabsOrderToSession() {
+  const tabUrls = tabs.map(tab => tab.url);
+  // check if session storage is available (it should be in MV3)
+  if (chrome.storage.session) {
+    chrome.storage.session.set({ [TABS_ORDER]: tabUrls });
+  }
+}
+
 /**
  * Sort tabs[] in place based on the order saved by saveTabsOrder()
  */
-function restoreTabsOrder() {
-  const tabUrls = Config.get(TABS_ORDER);
+async function restoreTabsOrder() {
+  let tabUrls = Config.get(TABS_ORDER);
+
+  // Try to load from session storage (more recent data if script was suspended)
+  if (chrome.storage.session) {
+    try {
+      const sessionData = await chrome.storage.session.get(TABS_ORDER);
+      if (sessionData && sessionData[TABS_ORDER]) {
+        tabUrls = sessionData[TABS_ORDER];
+        log('Restored tabs order from session storage');
+      }
+    } catch (e) {
+      log('Failed to load from session storage', e);
+    }
+  }
+
   if (!tabUrls?.length || !tabs.length) return;
 
   const tabOrder = {};
@@ -488,7 +508,7 @@ async function init() {
   }
 
   updateBadgeText();
-  restoreTabsOrder();
+  await restoreTabsOrder();
 
   // set the current tab as the first item in the tab list
   const tabArray = await chrome.tabs.query({ currentWindow: true, active: true });
