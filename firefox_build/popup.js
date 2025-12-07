@@ -1034,9 +1034,16 @@
         break;
     }
 
-    var fuse = new Fuse(tabs, options);
+    // Check if we can reuse the existing Fuse instance
+    if (this.fuse && this.lastTabs === tabs) {
+      // Reuse existing instance to save indexing cost
+    } else {
+      // Create new instance
+      this.fuse = new Fuse(tabs, options);
+      this.lastTabs = tabs;
+    }
 
-    return fuse.search(query.trim()).map(function (result) {
+    return this.fuse.search(query.trim()).map(function (result) {
       var highlighted = this.highlightResult(result);
       return {
         title: highlighted.title || result.item.title,
