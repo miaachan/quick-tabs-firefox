@@ -34,7 +34,7 @@ const SHOW_URLS = 'show_urls';
 const TAB_ORDER_UPDATE_DELAY = 'tab_order_update_delay';
 const TABS_ORDER = 'tabs_order';
 
-var Config = (function () {
+var Config = (function() {
   let data = {};
 
   return {
@@ -85,7 +85,7 @@ var Config = (function () {
       if (typeof key === 'string') {
         try {
           key = JSON.parse(key);
-        } catch (e) {
+        } catch(e) {
           key = {};
         }
       }
@@ -110,10 +110,10 @@ function ShortcutKey(properties) {
   this.key = properties.key || '';
 }
 
-ShortcutKey.prototype.pattern = function () {
+ShortcutKey.prototype.pattern = function() {
   return (this.alt ? "alt_" : "")
-    + (this.meta ? "meta_" : "")
-    + (this.ctrl ? "ctrl_" : "")
-    + (this.shift ? "shift_" : "")
-    + (this.key);
+      + (this.meta ? "meta_" : "")
+      + (this.ctrl ? "ctrl_" : "")
+      + (this.shift ? "shift_" : "")
+      + (this.key);
 };
