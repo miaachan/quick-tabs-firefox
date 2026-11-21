@@ -35,8 +35,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 <body>
 <div id="tools" class="tools"></div>
 <div class="qs_wrapper">
-  <input type="text" name="search" value="" class="qs_input" id="searchbox" placeholder="Search tabs, /b bookmarks, /h history" aria-label="Search tabs" autocomplete="off" tabindex="1" autofocus/>
-  <button type="button" id="duplicates-toggle" aria-pressed="false" title="Find duplicate tabs (/dupes)">Duplicates</button>
+  <input type="text" name="search" value="" class ="qs_input" id="searchbox" placeholder="Search (add spaces to include bookmarks or history)" autocomplete="off" tabindex="1" autofocus/>
 </div>
 <div class="content" tabindex="2">
   <div id="content-list">
@@ -78,7 +77,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
   {{#noResults}}
     <div class="noresult">
-      <span>{{emptyMessage}}</span>
+      <span>No tabs found</span>
     </div>
   {{/noResults}}
 

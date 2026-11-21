@@ -50,7 +50,6 @@
   const bgBookmarks = bookmarks || [];
 
   const searchBox = document.getElementById('searchbox');
-  const duplicatesToggle = document.getElementById('duplicates-toggle');
   let searchRevision = 0;
   let renderedRevision = 0;
   let duplicateScan = null;
@@ -400,10 +399,6 @@
     });
 
     $(document).on('keydown.return', function () {
-      if (document.activeElement === duplicatesToggle) {
-        duplicatesToggle.click();
-        return false;
-      }
       const inDuplicateView = isDuplicateQuery(searchBox.value);
       if ((inDuplicateView || visibleDuplicateGroups) && renderedRevision !== searchRevision) {
         return false;
@@ -443,12 +438,12 @@
     });
 
     searchBox.addEventListener('input', function () {
-      searchChanged();
-    });
-    duplicatesToggle.addEventListener('click', function () {
-      searchBox.value = isDuplicateQuery(searchBox.value) ? '' : '/dupes ';
-      searchBox.focus();
-      searchChanged(true);
+      const query = searchBox.value;
+      historySearchId++;
+      if (!isDuplicateQuery(query)) {
+        duplicateScan = null;
+      }
+      debouncedSearch(query, ++searchRevision);
     });
 
     /**
@@ -459,7 +454,6 @@
     var lastSearch = Config.get(LAST_SEARCHED_STR);
     if (Config.get(RESTORE_LAST_SEARCHED_STR) && typeof lastSearch !== "undefined" && lastSearch.length > 0) {
       $("#searchbox").val(lastSearch).select();
-      duplicatesToggle.setAttribute('aria-pressed', isDuplicateQuery(lastSearch));
       runSearch(lastSearch, searchRevision, { restoring: true });
     } else {
       drawCurrentTabs();
@@ -475,22 +469,6 @@
 
   function isDuplicateQuery(query) {
     return /^\/dupes\b/.test(query);
-  }
-
-  function searchChanged(immediate) {
-    const query = searchBox.value;
-    const revision = ++searchRevision;
-    historySearchId++;
-    const duplicates = isDuplicateQuery(query);
-    duplicatesToggle.setAttribute('aria-pressed', duplicates);
-    if (!duplicates) {
-      duplicateScan = null;
-    }
-    if (immediate) {
-      runSearch(query, revision);
-    } else {
-      debouncedSearch(query, revision);
-    }
   }
 
   function runSearch(query, revision, { restoring = false, notice } = {}) {
@@ -659,6 +637,9 @@
       return obj
     });
 
+    const notice = params.notice ||
+      (params.duplicateGroups && allTabs.length === 0 ? 'No duplicate tabs found' : undefined);
+
     var context = {
       'type': params.type || "all",
       'actions': actions,
@@ -672,9 +653,8 @@
       'urls': Config.get(SHOW_URLS),
       'tips': Config.get(SHOW_TOOLTIPS),
       'duplicates': Boolean(params.duplicateGroups),
-      'notice': params.notice,
-      'emptyMessage': params.duplicateGroups ? "No duplicate tabs found" : "No tabs found",
-      'noResults': !params.notice && allTabs.length === 0 && closedTabs.length === 0 && bookmarks.length === 0 && history.length === 0,
+      'notice': notice,
+      'noResults': !notice && allTabs.length === 0 && closedTabs.length === 0 && bookmarks.length === 0 && history.length === 0,
       'hasClosedTabs': closedTabs.length > 0,
       'hasBookmarks': bookmarks.length > 0,
       'hasHistory': history.length > 0,

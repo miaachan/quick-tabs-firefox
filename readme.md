@@ -28,7 +28,7 @@ Type these in the Quick Tabs search box. Add a space and a search term to narrow
 
 ### Duplicate tabs
 
-Click **Duplicates** in the popup or type `/dupes`. Add a title or URL fragment, such as `/dupes github.com`, to narrow the list. Review the rows marked **Keep**, then choose **Close N duplicate tabs** or close an extra copy individually.
+Type `/dupes` in the popup. Add a title or URL fragment, such as `/dupes github.com`, to narrow the list. Review the rows marked **Keep**, then choose **Close N duplicate tabs** or close an extra copy individually.
 
 Quick Tabs matches exact HTTP(S) URLs across open windows within the same Firefox container and browsing context. Pinned, active, and audible tabs are kept. If none of the copies have those protections, the most recently used copy is kept.
 

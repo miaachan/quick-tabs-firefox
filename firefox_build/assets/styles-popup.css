@@ -40,54 +40,29 @@ body {
   font-family: "Lucida Grande", Lucida, Verdana, sans-serif;
   padding: 8px 5px 7px 5px;
   margin: 0;
-  flex: 1;
-  min-width: 0;
+  width: 100%;
   outline: none;
   border: none;
   border-bottom: 1px solid #4285f4;
 }
 
-.qs_wrapper {
-  display: flex;
-}
-
-#duplicates-toggle {
-  padding: 0 10px;
-  border: 0;
-  border-bottom: 1px solid #4285f4;
-  border-left: 1px solid #4285f4;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-
-#duplicates-toggle:hover,
-#duplicates-toggle[aria-pressed="true"] {
-  background-color: #4285f4;
-  color: white;
-}
-
-#duplicates-toggle:focus-visible {
-  outline: 2px solid #4285f4;
-  outline-offset: -2px;
-}
-
 .duplicate-notice {
-  padding: 8px;
+  padding: 7px 10px;
+  line-height: 18px;
+  opacity: .78;
 }
 
 .duplicate-group-start {
-  border-top: 2px solid rgba(66, 133, 244, 0.3);
+  border-top: 1px solid rgba(127, 127, 127, .25);
 }
 
 .duplicate-close-icon {
   display: block;
   width: 16px;
-  margin: 4px 9px 0;
+  margin: 0 9px;
   text-align: center;
-  font-size: 20px;
-  line-height: 20px;
+  font-size: 18px;
+  line-height: 30px;
 }
 
 .hideicon .duplicate-close-icon {
@@ -96,11 +71,15 @@ body {
 
 .keep-label {
   float: right;
-  margin: 6px 8px 0 4px;
-  padding: 1px 5px;
-  border: 1px solid currentColor;
-  border-radius: 4px;
+  margin: 0 8px 0 6px;
   font-size: 10px;
+  line-height: 30px;
+  opacity: .78;
+}
+
+.item:hover .keep-label,
+.withfocus .keep-label {
+  opacity: 1;
 }
 
 #tools {
