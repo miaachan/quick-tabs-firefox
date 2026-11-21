@@ -35,7 +35,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 <body>
 <div id="tools" class="tools"></div>
 <div class="qs_wrapper">
-  <input type="text" name="search" value="" class ="qs_input" id="searchbox" placeholder="Search (add spaces to include bookmarks or history)" autocomplete="off" tabindex="1" autofocus/>
+  <input type="text" name="search" value="" class="qs_input" id="searchbox" placeholder="Search tabs, /b bookmarks, /h history" aria-label="Search tabs" autocomplete="off" tabindex="1" autofocus/>
+  <button type="button" id="duplicates-toggle" aria-pressed="false" title="Find duplicate tabs (/dupes)">Duplicates</button>
 </div>
 <div class="content" tabindex="2">
   <div id="content-list">
@@ -44,15 +45,22 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 </div>
 
 <script id="template" type="x-tmpl-mustache">
+  {{#notice}}
+    <div class="duplicate-notice" role="status">{{notice}}</div>
+  {{/notice}}
+
   {{#hasActions}}
+    {{^duplicates}}
     <div class="separator big">
       <span>Actions</span>
     </div>
+    {{/duplicates}}
 
     {{#actions}}
-      <div class="item action {{urlStyle}}" data-action="{{id}}">
+      <div class="item action {{urlStyle}} {{#duplicates}}nourl{{/duplicates}}" data-action="{{id}}">
         <div class="{{tabImageStyle}}">
-          <img src="/assets/action.png" width="16" height="16" border="0">
+          {{#duplicates}}<span class="duplicate-close-icon" aria-hidden="true">&times;</span>{{/duplicates}}
+          {{^duplicates}}<img src="/assets/action.png" width="16" height="16" border="0">{{/duplicates}}
         </div>
         <div>
           <div class="title">{{{name}}}</div>
@@ -61,24 +69,27 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
       </div>
     {{/actions}}
 
+    {{^duplicates}}
     <div class="separator big">
       <span>Tabs</span>
     </div>
+    {{/duplicates}}
   {{/hasActions}}
 
   {{#noResults}}
     <div class="noresult">
-      <span>No tabs found</span>
+      <span>{{emptyMessage}}</span>
     </div>
   {{/noResults}}
 
   {{#tabs}}
-    <div class="item tab open {{urlStyle}} {{winInfo}}" id="{{id}}">
+    <div class="item tab open {{urlStyle}} {{winInfo}}{{#duplicateGroupStart}} duplicate-group-start{{/duplicateGroupStart}}{{#duplicateKeep}} duplicate-keep{{/duplicateKeep}}" id="{{id}}">
       <div class="{{tabImageStyle}}">
         <img src="{{templateTabImage}}" width="16" height="16" border="0">
       </div>
       <div>
-        <div class="close" id="c{{id}}" title="{{closeTitle}}"></div>
+        {{#duplicateKeep}}<span class="keep-label">Keep</span>{{/duplicateKeep}}
+        {{^duplicateKeep}}<div class="close" id="c{{id}}" title="{{closeTitle}}"></div>{{/duplicateKeep}}
         <div class="title {{winInfo}}"{{#tips}} title="{{{templateTooltip}}}"{{/tips}}>{{{templateTitle}}}</div>
         {{#urls}}<div class="url">{{{templateUrl}}}</div>{{/urls}}
       </div>
@@ -150,6 +161,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 <script type="text/javascript" src="js/mustache.min.js"></script>
 <script type="text/javascript" src="utils.js"></script>
 <script type="text/javascript" src="config.js"></script>
+<script type="text/javascript" src="duplicate-tabs.js"></script>
 <script type="text/javascript" src="popup.js"></script>
 </body>
 </html>

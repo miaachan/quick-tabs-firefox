@@ -702,7 +702,19 @@ chrome.bookmarks.onMoved.addListener(function () { setupBookmarks() });
 
 setupBookmarks();
 
+let pendingDuplicateClose = Promise.resolve();
+
 chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
+  if (msg.call === 'closeDuplicateTabs') {
+    pendingDuplicateClose = pendingDuplicateClose
+      .then(() => closeDuplicateTabs(msg.arg))
+      .catch(function (error) {
+        console.error('Could not close duplicate tabs', error);
+        return { tabIds: [] };
+      });
+    pendingDuplicateClose.then(sendResponse);
+    return true;
+  }
   if (msg.call) {
     if (typeof self[msg.call] === 'function') {
       sendResponse(self[msg.call](msg.arg));
@@ -741,6 +753,15 @@ if (self.Config) {
  *
  * Some action functionality requires that the logic execute outside of the popup in order to reliably complete.
  */
+
+async function closeDuplicateTabs(review) {
+  const freshTabs = await browser.tabs.query({});
+  const tabIds = DuplicateTabs.closeIds(review, freshTabs);
+  if (tabIds.length > 0) {
+    await browser.tabs.remove(tabIds);
+  }
+  return { tabIds };
+}
 
 function splitTabs(tabsToInclude) {
   let head = tabsToInclude[0];

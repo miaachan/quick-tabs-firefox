@@ -20,6 +20,12 @@ This fork includes the following enhancements over upstream:
 - **Gentler disk writes** - Tab order persistence uses localStorage instead of session storage
 - **UI polish** - Fixed popup shifting on open
 
+## Duplicate tabs
+
+Click **Duplicates** in the popup or type `/dupes`. Add a title or URL fragment, such as `/dupes github.com`, to narrow the list. Review the rows marked **Keep**, then choose **Close N duplicate tabs** or close an extra copy individually.
+
+Quick Tabs matches exact HTTP(S) URLs across open windows within the same Firefox container and browsing context. Pinned, active, and audible tabs are kept. If none of the copies have those protections, the most recently used copy is kept.
+
 ## Maintenance
 
 This fork is maintained independently for personal use:

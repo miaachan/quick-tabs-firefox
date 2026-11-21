@@ -49,6 +49,14 @@
   let bgClosedTabs = closedTabs || [];
   const bgBookmarks = bookmarks || [];
 
+  const searchBox = document.getElementById('searchbox');
+  const duplicatesToggle = document.getElementById('duplicates-toggle');
+  let searchRevision = 0;
+  let renderedRevision = 0;
+  let duplicateScan = null;
+  let visibleDuplicateGroups = null;
+  let closingDuplicates = false;
+
   /**
    * connect to the background page on opening
    */
@@ -160,6 +168,16 @@
   }
 
   function closeTabs(tabIds) {
+    if (visibleDuplicateGroups) {
+      const selectedIds = new Set(tabIds);
+      const selectedGroups = visibleDuplicateGroups.map(group => ({
+        ...group,
+        copies: group.copies.filter(tab => selectedIds.has(tab.id))
+      }));
+      closeDuplicateGroups(selectedGroups);
+      return;
+    }
+
     bg('recordTabsRemoved', tabIds);
     for (var x = 0; x < tabIds.length; x++) {
       var tabId = tabIds[x];
@@ -246,7 +264,7 @@
   });
 
   function duplicateFocusedTab() {
-    let attr = entryWithFocus().attr('id');
+    let attr = entryWithFocus().filter('.open').attr('id');
     if (attr) {
       chrome.tabs.duplicate(parseInt(attr), (tab) => {
         closeWindow();
@@ -382,13 +400,21 @@
     });
 
     $(document).on('keydown.return', function () {
+      if (document.activeElement === duplicatesToggle) {
+        duplicatesToggle.click();
+        return false;
+      }
+      const inDuplicateView = isDuplicateQuery(searchBox.value);
+      if ((inDuplicateView || visibleDuplicateGroups) && renderedRevision !== searchRevision) {
+        return false;
+      }
       if (!isFocusSet()) {
         focusFirst();
       }
 
       if (isFocusSet()) {
         entryWithFocus().trigger("click");
-      } else {
+      } else if (!inDuplicateView) {
         openTabForSearch($("#searchbox").val());
       }
 
@@ -399,7 +425,7 @@
       if (!isFocusSet()) {
         focusFirst();
       }
-      var attr = entryWithFocus().attr('id');
+      var attr = entryWithFocus().filter('.open:not(.duplicate-keep)').attr('id');
       if (attr) {
         var tabId = parseInt(attr);
         if (entryWithFocus().nextAll(".open").length === 0) {
@@ -416,15 +442,13 @@
       return closeWindow();
     });
 
-    $('#searchbox').on({
-      'keyup': function () {
-        let str = $("#searchbox").val();
-        debouncedSearch(str, function (results) {
-          renderTabs(results);
-          // store the current search string
-          Config.set(LAST_SEARCHED_STR, str);
-        })
-      }
+    searchBox.addEventListener('input', function () {
+      searchChanged();
+    });
+    duplicatesToggle.addEventListener('click', function () {
+      searchBox.value = isDuplicateQuery(searchBox.value) ? '' : '/dupes ';
+      searchBox.focus();
+      searchChanged(true);
     });
 
     /**
@@ -435,9 +459,8 @@
     var lastSearch = Config.get(LAST_SEARCHED_STR);
     if (Config.get(RESTORE_LAST_SEARCHED_STR) && typeof lastSearch !== "undefined" && lastSearch.length > 0) {
       $("#searchbox").val(lastSearch).select();
-      performQuery(lastSearch, function (results) {
-        renderTabsExceptCurrent(results, 100);
-      });
+      duplicatesToggle.setAttribute('aria-pressed', isDuplicateQuery(lastSearch));
+      runSearch(lastSearch, searchRevision, { restoring: true });
     } else {
       drawCurrentTabs();
     }
@@ -446,9 +469,48 @@
   });
 
   /**
-   * curry up a debounced version of performQuery()
+   * Invalidate pending results as soon as the input changes.
    */
-  const debouncedSearch = Utils.debounce(performQuery, debounceDelay);
+  const debouncedSearch = Utils.debounce(runSearch, debounceDelay);
+
+  function isDuplicateQuery(query) {
+    return /^\/dupes\b/.test(query);
+  }
+
+  function searchChanged(immediate) {
+    const query = searchBox.value;
+    const revision = ++searchRevision;
+    historySearchId++;
+    const duplicates = isDuplicateQuery(query);
+    duplicatesToggle.setAttribute('aria-pressed', duplicates);
+    if (!duplicates) {
+      duplicateScan = null;
+    }
+    if (immediate) {
+      runSearch(query, revision);
+    } else {
+      debouncedSearch(query, revision);
+    }
+  }
+
+  function runSearch(query, revision, { restoring = false, notice } = {}) {
+    if (revision !== searchRevision) {
+      return;
+    }
+    performQuery(query, function (results) {
+      if (revision !== searchRevision) {
+        return;
+      }
+      if (results && restoring && !results.duplicateGroups) {
+        renderTabsExceptCurrent(results, 100, revision);
+      } else if (results) {
+        renderTabs({ ...results, notice: notice || results.notice }, 1, undefined, revision);
+      }
+      if (!restoring && Config.get(LAST_SEARCHED_STR) !== query) {
+        Config.set(LAST_SEARCHED_STR, query);
+      }
+    });
+  }
 
   /**
    * open a new tab with `searchString`, if it looks like a valid URL open that
@@ -472,6 +534,7 @@
   }
 
   function drawCurrentTabs() {
+    const revision = searchRevision;
     /**
      * This seems kinda nasty but it ensures that we are rendering the latest title information for the tabs
      * since this can be updated after pages have loaded
@@ -519,7 +582,7 @@
         renderTabs({
           allTabs: tabs,
           closedTabs: bgClosedTabs
-        }, 100, tab[0]);
+        }, 100, tab[0], revision);
       });
     });
   }
@@ -529,9 +592,9 @@
    * @param params an object that contains the various tab lists to be rendered
    * @param delay (optional) - how long before we render the tab list to the popup html
    */
-  function renderTabsExceptCurrent(params, delay) {
+  function renderTabsExceptCurrent(params, delay, revision) {
     chrome.tabs.query({ currentWindow: true, active: true }, function (tab) {
-      renderTabs(params, delay, tab[0]);
+      renderTabs(params, delay, tab[0], revision);
     });
   }
 
@@ -542,8 +605,8 @@
    * @param delay (optional) - how long before we render the tab list to the popup html
    * @param currentTab (optional) - what is the current tab, if defined it will be excluded from the render list
    */
-  function renderTabs(params, delay, currentTab) {
-    if (params === null) {
+  function renderTabs(params, delay, currentTab, revision = searchRevision) {
+    if (revision !== searchRevision) {
       return;
     }
 
@@ -554,7 +617,7 @@
       if (currentTab && obj.id === currentTab.id) {
         log(obj.id, currentTab.id, obj.id !== currentTab.id, obj, currentTab);
       }
-      if (Utils.includeTab(obj) && (!currentTab || obj.id !== currentTab.id)) {
+      if ((params.duplicateGroups || Utils.includeTab(obj)) && (!currentTab || obj.id !== currentTab.id)) {
         obj.templateTabImage = tabImage(obj);
         obj.templateTitle = encodeHTMLSource(obj.title);
         obj.templateTooltip = stripTitle(obj.title);
@@ -608,7 +671,10 @@
       'urlStyle': Config.get(SHOW_URLS) ? "" : "nourl",
       'urls': Config.get(SHOW_URLS),
       'tips': Config.get(SHOW_TOOLTIPS),
-      'noResults': allTabs.length === 0 && closedTabs.length === 0 && bookmarks.length === 0 && history.length === 0,
+      'duplicates': Boolean(params.duplicateGroups),
+      'notice': params.notice,
+      'emptyMessage': params.duplicateGroups ? "No duplicate tabs found" : "No tabs found",
+      'noResults': !params.notice && allTabs.length === 0 && closedTabs.length === 0 && bookmarks.length === 0 && history.length === 0,
       'hasClosedTabs': closedTabs.length > 0,
       'hasBookmarks': bookmarks.length > 0,
       'hasHistory': history.length > 0,
@@ -619,11 +685,20 @@
      * render the templates, the timeout is required to work around issues with Chromes extension rendering on the Mac, refs #91, #168
      */
     setTimeout(function () {
+      if (revision !== searchRevision) {
+        return;
+      }
+      visibleDuplicateGroups = params.duplicateGroups || null;
+      renderedRevision = revision;
       document.getElementById("content-list").innerHTML = Mustache.to_html(
         document.getElementById('template').text, context
       );
 
-      focusFirst();
+      if (visibleDuplicateGroups) {
+        focus($(".open:first"));
+      } else {
+        focusFirst();
+      }
 
       // create a new tab for the window
       let fOpenNewTab = function (e) {
@@ -646,7 +721,7 @@
       });
 
       $('.open').on('mousedown', function (e) {
-        if (e.button === 1) {
+        if (e.button === 1 && !this.classList.contains('duplicate-keep')) {
           e.preventDefault();
           closeTabs([parseInt(this.id)]);
         }
@@ -667,9 +742,14 @@
        * trigger it and clear the last search string before closing the popup.
        */
       $('.action').on('click', function () {
+        if (renderedRevision !== searchRevision) {
+          return;
+        }
         actions[parseInt(this.getAttribute('data-action'))].exec();
-        Config.set(LAST_SEARCHED_STR, "");
-        closeWindow();
+        if (!visibleDuplicateGroups) {
+          Config.set(LAST_SEARCHED_STR, "");
+          closeWindow();
+        }
       });
 
       pageTimer.log("tab template rendered");
@@ -792,11 +872,6 @@
    *  {{actions: *[], bookmarks: *[], closedTabs: [], allTabs: []}|null}
    */
   function performQuery(q, onComplete) {
-
-    if (!AbstractSearch.prototype.shouldSearch(q)) {
-      return null;
-    }
-
     // split the query into a command and query string if possible
     let arr = q.match(/(^\/\w+)? *(.*)?/);
     let cmdStr = arr[1] || "";
@@ -824,22 +899,6 @@
 
   function AbstractSearch() {
   }
-
-  /**
-   * If the search string hasn't changed, the keypress wasn't a character
-   * but some form of navigation, so we can stop.
-   *
-   * @returns {boolean}
-   */
-  AbstractSearch.prototype.shouldSearch = function (query) {
-    // make sure the this.searchStr variable has been initialized
-    if (!this.searchStr) {
-      this.searchStr = "";
-    }
-    var newQuery = this.searchStr !== query;
-    this.searchStr = query;
-    return newQuery;
-  };
 
   /**
    * Retrieve the search string from the search box and search the different tab groups following these rules:
@@ -1445,6 +1504,95 @@
     );
   };
 
+  async function closeDuplicateGroups(groups) {
+    if (closingDuplicates || renderedRevision !== searchRevision) {
+      return;
+    }
+    const review = groups.filter(group => group.copies.length > 0).map(group => ({
+      key: group.key,
+      keepIds: group.keep.map(tab => tab.id),
+      copyIds: group.copies.map(tab => tab.id)
+    }));
+    if (review.length === 0) {
+      return;
+    }
+
+    closingDuplicates = true;
+    try {
+      const result = await bg('closeDuplicateTabs', review);
+      const [freshTabs, closedTabs] = await Promise.all([
+        browser.tabs.query({}),
+        bg('getClosedTabs')
+      ]);
+      updateOpenTabs(freshTabs);
+      bgClosedTabs = closedTabs;
+      if (isDuplicateQuery(searchBox.value)) {
+        duplicateScan = Promise.resolve(DuplicateTabs.find(freshTabs));
+        const openIds = new Set(freshTabs.map(tab => tab.id));
+        const closedCount = result.tabIds.filter(id => !openIds.has(id)).length;
+        const requestedCount = review.reduce((total, group) => total + group.copyIds.length, 0);
+        const notice = closedCount === 0 ? 'No duplicates closed. Review the updated list.'
+          : `Closed ${closedCount} duplicate ${closedCount === 1 ? 'tab' : 'tabs'}.`
+            + (closedCount < requestedCount ? ' Some tabs stayed open.' : '');
+        runSearch(searchBox.value, ++searchRevision, { notice });
+      }
+    } catch (error) {
+      console.error('Could not close duplicate tabs', error);
+      if (isDuplicateQuery(searchBox.value)) {
+        duplicateScan = null;
+        runSearch(searchBox.value, ++searchRevision, { notice: 'Could not close duplicate tabs.' });
+      }
+    } finally {
+      closingDuplicates = false;
+    }
+  }
+
+  function DuplicateTabsCmd() {}
+
+  DuplicateTabsCmd.prototype = Object.create(AbstractCommand.prototype);
+
+  DuplicateTabsCmd.prototype.run = async function (query, onComplete) {
+    let groups;
+    try {
+      duplicateScan ??= browser.tabs.query({}).then(DuplicateTabs.find);
+      groups = await duplicateScan;
+    } catch (error) {
+      duplicateScan = null;
+      console.error('Could not scan duplicate tabs', error);
+      onComplete({ duplicateGroups: [], notice: 'Could not check for duplicate tabs.' });
+      return;
+    }
+
+    const term = query.trim().toLowerCase();
+    const matchingGroups = groups.filter(group =>
+      !term || [...group.keep, ...group.copies].some(tab =>
+        tab.title?.toLowerCase().includes(term) || tab.url.toLowerCase().includes(term)
+      )
+    );
+    const tabs = [];
+    let copyCount = 0;
+    for (const group of matchingGroups) {
+      group.keep.forEach((tab, index) => tabs.push({
+        ...tab,
+        title: tab.title || tab.url,
+        duplicateKeep: true,
+        duplicateGroupStart: index === 0 && tabs.length > 0
+      }));
+      group.copies.forEach(tab => tabs.push({ ...tab, title: tab.title || tab.url }));
+      copyCount += group.copies.length;
+    }
+
+    onComplete({
+      duplicateGroups: matchingGroups,
+      allTabs: tabs,
+      actions: copyCount ? [{
+        name: `Close ${copyCount} duplicate ${copyCount === 1 ? 'tab' : 'tabs'}`,
+        exec: () => closeDuplicateGroups(matchingGroups)
+      }] : [],
+      notice: tabs.length > 0 && copyCount === 0 ? 'All matching duplicates are protected.' : undefined
+    });
+  };
+
 
   /**
    * Merge tabs
@@ -1769,6 +1917,7 @@
     "/h": new HistorySearchCmd(),
     "/w": new WindowSearchCmd(),
     "/p": new PinnedTabSearchCmd(),
+    "/dupes": new DuplicateTabsCmd(),
 
     "/fuzzy": new FuzzySearchCmd(),
     "/fuse": new FuseSearchCmd(),
