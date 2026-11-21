@@ -59,10 +59,10 @@ body {
 .duplicate-close-icon {
   display: block;
   width: 16px;
+  height: 16px;
   margin: 0 9px;
-  text-align: center;
-  font-size: 18px;
-  line-height: 30px;
+  background-color: currentColor;
+  mask: url(close.png) center / 12px 12px no-repeat;
 }
 
 .hideicon .duplicate-close-icon {
@@ -127,6 +127,21 @@ b {
   position: relative;
 }
 
+.duplicate-action {
+  display: flex;
+  align-items: center;
+}
+
+.item.duplicate-action > div:last-child {
+  height: auto;
+  min-width: 0;
+}
+
+.duplicate-action.nourl div.title {
+  padding-top: 0;
+  line-height: normal;
+}
+
 div.tabimage {
   float: left;
 }
@@ -154,6 +169,17 @@ div.withfocus.bookmark div.remove {
   display: inline;
   float: right;
   color: white;
+}
+
+div.duplicate-keep div.close {
+  display: block;
+  float: right;
+  visibility: hidden;
+}
+
+div.duplicate-keep:hover div.close,
+div.duplicate-keep.withfocus div.close {
+  visibility: visible;
 }
 
 div.close, div.remove{

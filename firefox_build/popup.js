@@ -53,7 +53,7 @@
   let searchRevision = 0;
   let renderedRevision = 0;
   let duplicateScan = null;
-  let visibleDuplicateGroups = null;
+  let showingDuplicates = false;
   let closingDuplicates = false;
 
   /**
@@ -167,13 +167,8 @@
   }
 
   function closeTabs(tabIds) {
-    if (visibleDuplicateGroups) {
-      const selectedIds = new Set(tabIds);
-      const selectedGroups = visibleDuplicateGroups.map(group => ({
-        ...group,
-        copies: group.copies.filter(tab => selectedIds.has(tab.id))
-      }));
-      closeDuplicateGroups(selectedGroups);
+    if (showingDuplicates) {
+      closeFromDuplicateView(() => browser.tabs.remove(tabIds));
       return;
     }
 
@@ -400,7 +395,7 @@
 
     $(document).on('keydown.return', function () {
       const inDuplicateView = isDuplicateQuery(searchBox.value);
-      if ((inDuplicateView || visibleDuplicateGroups) && renderedRevision !== searchRevision) {
+      if ((inDuplicateView || showingDuplicates) && renderedRevision !== searchRevision) {
         return false;
       }
       if (!isFocusSet()) {
@@ -420,7 +415,7 @@
       if (!isFocusSet()) {
         focusFirst();
       }
-      var attr = entryWithFocus().filter('.open:not(.duplicate-keep)').attr('id');
+      var attr = entryWithFocus().filter('.open').attr('id');
       if (attr) {
         var tabId = parseInt(attr);
         if (entryWithFocus().nextAll(".open").length === 0) {
@@ -479,7 +474,7 @@
       if (revision !== searchRevision) {
         return;
       }
-      if (results && restoring && !results.duplicateGroups) {
+      if (results && restoring && !results.duplicates) {
         renderTabsExceptCurrent(results, 100, revision);
       } else if (results) {
         renderTabs({ ...results, notice: notice || results.notice }, 1, undefined, revision);
@@ -595,7 +590,7 @@
       if (currentTab && obj.id === currentTab.id) {
         log(obj.id, currentTab.id, obj.id !== currentTab.id, obj, currentTab);
       }
-      if ((params.duplicateGroups || Utils.includeTab(obj)) && (!currentTab || obj.id !== currentTab.id)) {
+      if ((params.duplicates || Utils.includeTab(obj)) && (!currentTab || obj.id !== currentTab.id)) {
         obj.templateTabImage = tabImage(obj);
         obj.templateTitle = encodeHTMLSource(obj.title);
         obj.templateTooltip = stripTitle(obj.title);
@@ -638,7 +633,7 @@
     });
 
     const notice = params.notice ||
-      (params.duplicateGroups && allTabs.length === 0 ? 'No duplicate tabs found' : undefined);
+      (params.duplicates && allTabs.length === 0 ? 'No duplicate tabs found' : undefined);
 
     var context = {
       'type': params.type || "all",
@@ -652,7 +647,7 @@
       'urlStyle': Config.get(SHOW_URLS) ? "" : "nourl",
       'urls': Config.get(SHOW_URLS),
       'tips': Config.get(SHOW_TOOLTIPS),
-      'duplicates': Boolean(params.duplicateGroups),
+      'duplicates': params.duplicates,
       'notice': notice,
       'noResults': !notice && allTabs.length === 0 && closedTabs.length === 0 && bookmarks.length === 0 && history.length === 0,
       'hasClosedTabs': closedTabs.length > 0,
@@ -668,13 +663,13 @@
       if (revision !== searchRevision) {
         return;
       }
-      visibleDuplicateGroups = params.duplicateGroups || null;
+      showingDuplicates = Boolean(params.duplicates);
       renderedRevision = revision;
       document.getElementById("content-list").innerHTML = Mustache.to_html(
         document.getElementById('template').text, context
       );
 
-      if (visibleDuplicateGroups) {
+      if (showingDuplicates) {
         focus($(".open:first"));
       } else {
         focusFirst();
@@ -701,7 +696,7 @@
       });
 
       $('.open').on('mousedown', function (e) {
-        if (e.button === 1 && !this.classList.contains('duplicate-keep')) {
+        if (e.button === 1) {
           e.preventDefault();
           closeTabs([parseInt(this.id)]);
         }
@@ -726,7 +721,7 @@
           return;
         }
         actions[parseInt(this.getAttribute('data-action'))].exec();
-        if (!visibleDuplicateGroups) {
+        if (!showingDuplicates) {
           Config.set(LAST_SEARCHED_STR, "");
           closeWindow();
         }
@@ -1484,22 +1479,27 @@
     );
   };
 
-  async function closeDuplicateGroups(groups) {
-    if (closingDuplicates || renderedRevision !== searchRevision) {
-      return;
-    }
+  function closeDuplicateGroups(groups) {
     const review = groups.filter(group => group.copies.length > 0).map(group => ({
       key: group.key,
       keepIds: group.keep.map(tab => tab.id),
       copyIds: group.copies.map(tab => tab.id)
     }));
-    if (review.length === 0) {
+    const requestedCount = review.reduce((total, group) => total + group.copyIds.length, 0);
+    closeFromDuplicateView(async () => ({
+      ...await bg('closeDuplicateTabs', review),
+      requestedCount
+    }));
+  }
+
+  async function closeFromDuplicateView(close) {
+    if (closingDuplicates || renderedRevision !== searchRevision) {
       return;
     }
 
     closingDuplicates = true;
     try {
-      const result = await bg('closeDuplicateTabs', review);
+      const bulkResult = await close();
       const [freshTabs, closedTabs] = await Promise.all([
         browser.tabs.query({}),
         bg('getClosedTabs')
@@ -1508,19 +1508,21 @@
       bgClosedTabs = closedTabs;
       if (isDuplicateQuery(searchBox.value)) {
         duplicateScan = Promise.resolve(DuplicateTabs.find(freshTabs));
-        const openIds = new Set(freshTabs.map(tab => tab.id));
-        const closedCount = result.tabIds.filter(id => !openIds.has(id)).length;
-        const requestedCount = review.reduce((total, group) => total + group.copyIds.length, 0);
-        const notice = closedCount === 0 ? 'No duplicates closed. Review the updated list.'
-          : `Closed ${closedCount} duplicate ${closedCount === 1 ? 'tab' : 'tabs'}.`
-            + (closedCount < requestedCount ? ' Some tabs stayed open.' : '');
+        let notice;
+        if (bulkResult) {
+          const openIds = new Set(freshTabs.map(tab => tab.id));
+          const closedCount = bulkResult.tabIds.filter(id => !openIds.has(id)).length;
+          notice = closedCount === 0 ? 'No duplicates closed. Review the updated list.'
+            : `Closed ${closedCount} duplicate ${closedCount === 1 ? 'tab' : 'tabs'}.`
+              + (closedCount < bulkResult.requestedCount ? ' Some tabs stayed open.' : '');
+        }
         runSearch(searchBox.value, ++searchRevision, { notice });
       }
     } catch (error) {
-      console.error('Could not close duplicate tabs', error);
+      console.error('Could not close tabs from duplicate search', error);
       if (isDuplicateQuery(searchBox.value)) {
         duplicateScan = null;
-        runSearch(searchBox.value, ++searchRevision, { notice: 'Could not close duplicate tabs.' });
+        runSearch(searchBox.value, ++searchRevision, { notice: 'Could not close tabs.' });
       }
     } finally {
       closingDuplicates = false;
@@ -1539,7 +1541,7 @@
     } catch (error) {
       duplicateScan = null;
       console.error('Could not scan duplicate tabs', error);
-      onComplete({ duplicateGroups: [], notice: 'Could not check for duplicate tabs.' });
+      onComplete({ duplicates: true, notice: 'Could not check for duplicate tabs.' });
       return;
     }
 
@@ -1563,13 +1565,12 @@
     }
 
     onComplete({
-      duplicateGroups: matchingGroups,
+      duplicates: true,
       allTabs: tabs,
       actions: copyCount ? [{
         name: `Close ${copyCount} duplicate ${copyCount === 1 ? 'tab' : 'tabs'}`,
         exec: () => closeDuplicateGroups(matchingGroups)
-      }] : [],
-      notice: tabs.length > 0 && copyCount === 0 ? 'All matching duplicates are protected.' : undefined
+      }] : []
     });
   };
 

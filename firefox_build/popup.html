@@ -56,9 +56,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
     {{/duplicates}}
 
     {{#actions}}
-      <div class="item action {{urlStyle}} {{#duplicates}}nourl{{/duplicates}}" data-action="{{id}}">
+      <div class="item action {{urlStyle}}{{#duplicates}} duplicate-action nourl{{/duplicates}}" data-action="{{id}}">
         <div class="{{tabImageStyle}}">
-          {{#duplicates}}<span class="duplicate-close-icon" aria-hidden="true">&times;</span>{{/duplicates}}
+          {{#duplicates}}<span class="duplicate-close-icon" aria-hidden="true"></span>{{/duplicates}}
           {{^duplicates}}<img src="/assets/action.png" width="16" height="16" border="0">{{/duplicates}}
         </div>
         <div>
@@ -87,8 +87,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
         <img src="{{templateTabImage}}" width="16" height="16" border="0">
       </div>
       <div>
-        {{#duplicateKeep}}<span class="keep-label">Keep</span>{{/duplicateKeep}}
-        {{^duplicateKeep}}<div class="close" id="c{{id}}" title="{{closeTitle}}"></div>{{/duplicateKeep}}
+        <div class="close" id="c{{id}}" title="{{closeTitle}}"></div>
+        {{#duplicateKeep}}<span class="keep-label" title="Kept during bulk cleanup">Keep</span>{{/duplicateKeep}}
         <div class="title {{winInfo}}"{{#tips}} title="{{{templateTooltip}}}"{{/tips}}>{{{templateTitle}}}</div>
         {{#urls}}<div class="url">{{{templateUrl}}}</div>{{/urls}}
       </div>
