@@ -29,7 +29,7 @@
     "storage",
     "alarms"
   ],
-  "version": "2026.11.21",
+  "version": "2026.11.21.1",
   "commands": {
     "_execute_action": {
       "suggested_key": {
@@ -50,7 +50,8 @@
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "{f8fb8b89-f9f6-4463-91cc-0e26d5d20610}"
+      "id": "{f8fb8b89-f9f6-4463-91cc-0e26d5d20610}",
+      "update_url": "https://github.com/miaachan/quick-tabs-firefox/releases/latest/download/updates.json"
     }
   }
 }

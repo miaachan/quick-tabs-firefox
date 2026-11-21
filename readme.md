@@ -8,6 +8,8 @@ For full features and documentation, see the [original project readme](https://g
 
 Download the latest signed `.xpi` from [Releases](https://github.com/miaachan/quick-tabs-firefox/releases) and open it in Firefox.
 
+Install version `2026.11.21.1` or later over your existing copy once to enable automatic updates from GitHub Releases. Firefox will pick up future releases when add-on updates are enabled.
+
 To try the current source, open `about:debugging#/runtime/this-firefox` in Firefox, click **Load Temporary Add-on**, and select `firefox_build/manifest.json` from this checkout. A temporary install lasts until you restart Firefox. [Mozilla's temporary install guide](https://extensionworkshop.com/documentation/develop/temporary-installation-in-firefox/)
 
 ## Slash commands
@@ -28,9 +30,9 @@ Type these in the Quick Tabs search box. Add a space and a search term to narrow
 
 ### Duplicate tabs
 
-Type `/dupes` in the popup. Add a title or URL fragment, such as `/dupes github.com`, to narrow the list. Review the rows marked **Keep**, then choose **Close N duplicate tabs** or close an extra copy individually.
+Type `/dupes` in the popup. Add a title or URL fragment, such as `/dupes github.com`, to narrow the list. Choose **Close N duplicate tabs** to close the extra copies in bulk. The usual close shortcut closes the selected tab, including one marked **Keep**.
 
-Quick Tabs matches exact HTTP(S) URLs across open windows within the same Firefox container and browsing context. Pinned, active, and audible tabs are kept. If none of the copies have those protections, the most recently used copy is kept.
+Quick Tabs matches exact HTTP(S) URLs across open windows within the same Firefox container and browsing context. Bulk cleanup keeps pinned tabs, active tabs in each window, and audible tabs. If a group has none of those, it keeps the most recently used tab.
 
 ## Firefox Port Improvements
 
@@ -50,7 +52,16 @@ This fork is maintained independently for personal use:
 
 - **Upstream sync**: `./quick-tabs/` mirrors upstream master for easy diffing. Useful changes are cherry-picked into `./firefox_build/`
 - **No upstream contributions**: Changes here are Firefox-specific and won't be pushed back
-- **Version scheme**: `YYYY.M.D` based on release date
+- **Version scheme**: `YYYY.M.D` based on release date. Add a numeric suffix for another release the same day.
+
+### Publishing an update
+
+1. Bump the version in `firefox_build/manifest.json` and sign the build on Mozilla Add-ons as unlisted. Keep the Gecko ID and update URL.
+2. Name the signed file `quick-tabs-firefox-VERSION.xpi`. Generate the Firefox update manifest from that file.
+   ```sh
+   node tools/make-update-manifest.cjs /path/to/quick-tabs-firefox-VERSION.xpi > /path/to/updates.json
+   ```
+3. Attach the signed XPI and `updates.json` to the same GitHub Release. Use the tag `vVERSION` and publish it as the latest release.
 
 ### Syncing with upstream
 
