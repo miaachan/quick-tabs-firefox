@@ -39,9 +39,15 @@
     await chrome.runtime.sendMessage({ firstRun: true });
   }
 
-  let bgTabs = await bg('getTabs') || [];
-  let bgClosedTabs = await bg('getClosedTabs') || [];
-  let bgBookmarks = await bg('getBookmarks') || [];
+  const [recordedTabs, closedTabs, bookmarks] = await Promise.all([
+    bg('getTabs'),
+    bg('getClosedTabs'),
+    bg('getBookmarks')
+  ]);
+  let bgTabs = recordedTabs || [];
+  let validOpenTabs = bgTabs.filter(Utils.validTab);
+  let bgClosedTabs = closedTabs || [];
+  const bgBookmarks = bookmarks || [];
 
   /**
    * connect to the background page on opening
@@ -293,6 +299,11 @@
     return tabsToRender;
   }
 
+  function updateOpenTabs(queryResultTabs) {
+    bgTabs = compareTabArrays(bgTabs, queryResultTabs);
+    validOpenTabs = bgTabs.filter(Utils.validTab);
+  }
+
   /**
    * =============================================================================================================================================================
    * Page initialization, rendering and event hookups
@@ -468,7 +479,7 @@
     chrome.tabs.query({}, function (queryResultTabs) {
 
       // assign the cleaned tabs list back to background.js
-      bgTabs = compareTabArrays(bgTabs, queryResultTabs);
+      updateOpenTabs(queryResultTabs);
 
       // find the current tab so that it can be excluded on the initial tab list rendering
       chrome.tabs.query({ currentWindow: true, active: true }, function (tab) {
@@ -505,10 +516,10 @@
          * render only the tabs and closed tabs on initial load (hence the empty array [] for bookmarks), the
          * delay is important to work around issues with Chromes extension rendering on the Mac, refs #91, #168
          */
-        renderTabsExceptCurrent({
+        renderTabs({
           allTabs: tabs,
           closedTabs: bgClosedTabs
-        }, 100);
+        }, 100, tab[0]);
       });
     });
   }
@@ -854,10 +865,10 @@
 
     if (query.trim().length === 0) {
       // no need to search if the string is empty
-      filteredTabs = bgTabs.filter(Utils.validTab);
+      filteredTabs = validOpenTabs;
       filteredClosed = bgClosedTabs;
     } else if (query === audibleQuery) {
-      filteredTabs = bgTabs.filter(tab => Utils.validTab(tab) && filterAudible(tab))
+      filteredTabs = validOpenTabs.filter(filterAudible);
     } else if (searchHistory || startsOrEndsWith(query, searchHistoryStr)) {
       // i hate to break out of a function part way though but...
       this.searchHistory(query, 0);
@@ -865,7 +876,7 @@
     } else if (searchBookmark || startsOrEndsWith(query, searchBookmarkStr)) {
       filteredBookmarks = this.searchTabArray(query, bgBookmarks);
     } else {
-      filteredTabs = this.searchTabArray(query, bgTabs.filter(Utils.validTab));
+      filteredTabs = this.searchTabArray(query, validOpenTabs);
       filteredClosed = this.searchTabArray(query, bgClosedTabs);
       var resultCount = filteredTabs.length + filteredClosed.length;
       if (startsOrEndsWith(query, searchTabsBookmarksStr) || resultCount < MIN_TAB_ONLY_RESULTS) {
@@ -888,9 +899,9 @@
   }
 
   /**
-   * Get Fuse.js options for history search (based on current config)
+   * Get Fuse.js options based on the current config
    */
-  function getHistoryFuseOptions() {
+  function getFuseOptions() {
     var options = {
       location: 0,
       distance: 1000,
@@ -951,7 +962,7 @@
     }
 
     var filterString = Config.get(HISTORY_FILTER).trim();
-    var fuseOptions = getHistoryFuseOptions();
+    var fuseOptions = getFuseOptions();
 
     if (historyCache !== null) {
       // History already loaded, just search with cached data in worker
@@ -1038,6 +1049,8 @@
    */
 
   function FuseSearch() {
+    this.options = getFuseOptions();
+    this.indexes = new WeakMap();
   }
 
   FuseSearch.prototype = Object.create(AbstractSearch.prototype);
@@ -1062,47 +1075,13 @@
   };
 
   FuseSearch.prototype.searchTabArray = function (query, tabs) {
-    var options = {
-      location: 0,
-      distance: 1000,
-      ignoreLocation: true, // v7: ignore location distance check for better full-string matching
-      shouldSort: true,
-      includeMatches: true,
-      minMatchCharLength: 1,
-      keys: [{
-        name: 'title',
-        weight: 1.0
-      }]
-    };
-
-    if (Config.get(SHOW_URLS) || Config.get(SEARCH_URLS)) {
-      options.keys.push({
-        name: 'url',
-        weight: 0.9
-      });
+    let fuse = this.indexes.get(tabs);
+    if (!fuse) {
+      fuse = new Fuse(tabs, this.options);
+      this.indexes.set(tabs, fuse);
     }
 
-    switch (Config.get(SEARCH_TYPE)) {
-      case 'fuseT1':
-      default:
-        options.threshold = 0.6;
-        break;
-      case 'fuseT2':
-        options.useExtendedSearch = true; // v7: replacement for advanced tokenization
-        options.threshold = 0.4;
-        break;
-    }
-
-    // Check if we can reuse the existing Fuse instance
-    if (this.fuse && this.lastTabs === tabs) {
-      // Reuse existing instance to save indexing cost
-    } else {
-      // Create new instance
-      this.fuse = new Fuse(tabs, options);
-      this.lastTabs = tabs;
-    }
-
-    return this.fuse.search(query.trim()).map(function (result) {
+    return fuse.search(query.trim()).map(function (result) {
       var highlighted = this.highlightResult(result);
       return {
         title: highlighted.title || result.item.title,
@@ -1393,12 +1372,13 @@
    */
 
   function FuseSearchCmd() {
+    this.fuseSearch = new FuseSearch();
   }
 
   FuseSearchCmd.prototype = Object.create(AbstractCommand.prototype);
 
   FuseSearchCmd.prototype.run = function (query, onComplete) {
-    onComplete(this.searchUsing(new FuseSearch(), query));
+    onComplete(this.searchUsing(this.fuseSearch, query));
   };
 
 
